@@ -1,0 +1,7 @@
+{
+  "gemini_api_key": "YOUR_API_KEY_HERE",
+  "gemini_model": "gemini-2.5-flash",
+  "typing_speed": 15,
+  "auto_solve": false,
+  "theme": "dark"
+}
