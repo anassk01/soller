@@ -26,8 +26,7 @@
   let ninjaSolution = null;      // Buffered solution waiting to be typed
   let ninjaTypingIndex = 0;      // Current position in solution
   let ninjaFindText = '';        // Text to find in editor for replacement
-  let ninjaIsHoldingKey = false; // Is the user currently holding Ctrl+Shift+W
-  let ninjaTypingActive = false; // Typing loop running
+  let ninjaReady = false;        // Editor cleared and ready to receive chars
 
   // Inject Styles
   const style = document.createElement('style');
@@ -229,155 +228,170 @@
     ninjaMode = !ninjaMode;
     if (ninjaMode) {
       panel.classList.add('ninja-hidden');
-      console.log('[SL] NINJA MODE: ON - UI hidden');
-      console.log('[SL] Controls:');
-      console.log('  Ctrl+Shift+S = Scan & fetch solution');
-      console.log('  Hold SPACE = Type while holding (only after solution ready)');
-      console.log('  Ctrl+Shift+N = Exit ninja mode');
+      console.log('[SL] NINJA MODE: ON');
     } else {
       panel.classList.remove('ninja-hidden');
-      console.log('[SL] NINJA MODE: OFF - UI visible');
+      console.log('[SL] NINJA MODE: OFF');
       ninjaSolution = null;
       ninjaFindText = '';
       ninjaTypingIndex = 0;
+      ninjaReady = false;
     }
   }
 
-  // Human-like random delay (variable typing speed with occasional pauses)
-  function humanDelay() {
-    // Base typing: 80-200ms per character (human medium speed)
-    let delay = 80 + Math.random() * 120;
+  // Get the next chunk of characters to type for one keypress.
+  // Groups newline + leading whitespace as a single chunk (like pressing Enter with auto-indent).
+  // Groups consecutive spaces (2-4) as a single chunk (like pressing Tab).
+  function ninjaGetNextChunk() {
+    if (!ninjaSolution || ninjaTypingIndex >= ninjaSolution.length) return null;
 
-    // 5% chance of a short pause (thinking)
-    if (Math.random() < 0.05) {
-      delay += 200 + Math.random() * 400;
+    const chars = ninjaSolution;
+    const i = ninjaTypingIndex;
+    const char = chars[i];
+
+    // Newline: bundle \n + all leading whitespace on next line
+    if (char === '\n') {
+      let end = i + 1;
+      while (end < chars.length && (chars[end] === ' ' || chars[end] === '\t')) end++;
+      return chars.slice(i, end);
     }
 
-    // 1% chance of a longer pause (reading/thinking harder)
-    if (Math.random() < 0.01) {
-      delay += 500 + Math.random() * 1000;
+    // Space: bundle 2-4 consecutive spaces (tab-like)
+    if (char === ' ') {
+      let end = i + 1;
+      while (end < chars.length && chars[end] === ' ' && (end - i) < 4) end++;
+      return chars.slice(i, end);
     }
 
-    return delay;
+    // Regular character: one at a time
+    return char;
   }
 
-  // Type next character in ninja mode (only when key held)
-  async function ninjaTypeLoop() {
-    if (ninjaTypingActive) return;
-    ninjaTypingActive = true;
+  // Prepare the editor on first keystroke: clear target area
+  function ninjaPrepareEditor() {
+    const cmEl = document.querySelector('.CodeMirror');
+    const cm = cmEl && cmEl.CodeMirror;
+    const hasMonaco = window.monaco && window.monaco.editor;
+
+    if (!cm && !hasMonaco) {
+      console.error('[SL] No editor found');
+      return false;
+    }
+
+    if (cm) {
+      if (ninjaFindText) {
+        const content = cm.getValue();
+        const idx = content.indexOf(ninjaFindText);
+        if (idx !== -1) {
+          const from = cm.posFromIndex(idx);
+          const to = cm.posFromIndex(idx + ninjaFindText.length);
+          cm.replaceRange('', from, to);
+          cm.setCursor(from);
+        } else {
+          cm.setValue('');
+          cm.setCursor(0, 0);
+        }
+      } else {
+        cm.setValue('');
+        cm.setCursor(0, 0);
+      }
+      cm.focus();
+    } else {
+      const model = window.monaco.editor.getModels()[0];
+      const editor = window.monaco.editor.getEditors()[0];
+
+      let targetRange;
+
+      if (ninjaFindText) {
+        const content = model.getValue();
+        const idx = content.indexOf(ninjaFindText);
+        if (idx !== -1) {
+          const startPos = model.getPositionAt(idx);
+          const endPos = model.getPositionAt(idx + ninjaFindText.length);
+          targetRange = new window.monaco.Range(
+            startPos.lineNumber, startPos.column,
+            endPos.lineNumber, endPos.column
+          );
+        }
+      }
+
+      if (!targetRange) {
+        const lineCount = model.getLineCount();
+        const lastLineLength = model.getLineMaxColumn(lineCount);
+        targetRange = new window.monaco.Range(1, 1, lineCount, lastLineLength);
+      }
+
+      editor.executeEdits('sl-edit', [{
+        range: targetRange,
+        text: '',
+      }]);
+
+      const startPos = targetRange.getStartPosition();
+      editor.setPosition(startPos);
+      editor.focus();
+    }
+
+    return true;
+  }
+
+  // Insert a chunk of text at the current cursor position
+  function ninjaInsertChunk(chunk) {
+    const cmEl = document.querySelector('.CodeMirror');
+    const cm = cmEl && cmEl.CodeMirror;
+
+    if (cm) {
+      const cursor = cm.getCursor();
+      cm.replaceRange(chunk, cursor);
+    } else {
+      const editor = window.monaco.editor.getEditors()[0];
+      const pos = editor.getPosition();
+      const range = new window.monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column);
+
+      editor.executeEdits('sl-edit', [{
+        range: range,
+        text: chunk,
+      }]);
+
+      // Calculate new cursor position after inserting chunk
+      const lines = chunk.split('\n');
+      let newLine = pos.lineNumber + (lines.length - 1);
+      let newCol = lines.length > 1 ? lines[lines.length - 1].length + 1 : pos.column + chunk.length;
+      editor.setPosition({ lineNumber: newLine, column: newCol });
+      editor.revealPositionInCenter(editor.getPosition());
+    }
+  }
+
+  // Handle one keypress in ninja mode: type the next chunk
+  function ninjaTypeNextChunk() {
+    if (!ninjaSolution) return false;
 
     try {
-      // Detect editor type
-      const cmEl = document.querySelector('.CodeMirror');
-      const cm = cmEl && cmEl.CodeMirror;
-      const hasMonaco = window.monaco && window.monaco.editor;
-
-      if (!cm && !hasMonaco) {
-        console.error('[SL] No editor found');
-        ninjaTypingActive = false;
-        return;
+      // First keypress: prepare editor
+      if (!ninjaReady) {
+        if (!ninjaPrepareEditor()) return false;
+        ninjaReady = true;
       }
 
-      // On first char, clear the target area using findText from AI
-      if (ninjaTypingIndex === 0) {
-        if (cm) {
-          if (ninjaFindText) {
-            const content = cm.getValue();
-            const idx = content.indexOf(ninjaFindText);
-            if (idx !== -1) {
-              const from = cm.posFromIndex(idx);
-              const to = cm.posFromIndex(idx + ninjaFindText.length);
-              cm.replaceRange('', from, to);
-              cm.setCursor(from);
-            } else {
-              cm.setValue('');
-              cm.setCursor(0, 0);
-            }
-          } else {
-            cm.setValue('');
-            cm.setCursor(0, 0);
-          }
-          cm.focus();
-        } else {
-          const model = window.monaco.editor.getModels()[0];
-          const editor = window.monaco.editor.getEditors()[0];
+      // Get and insert next chunk
+      const chunk = ninjaGetNextChunk();
+      if (!chunk) return false;
 
-          let targetRange;
-
-          if (ninjaFindText) {
-            const content = model.getValue();
-            const idx = content.indexOf(ninjaFindText);
-            if (idx !== -1) {
-              const startPos = model.getPositionAt(idx);
-              const endPos = model.getPositionAt(idx + ninjaFindText.length);
-              targetRange = new window.monaco.Range(
-                startPos.lineNumber, startPos.column,
-                endPos.lineNumber, endPos.column
-              );
-            }
-          }
-
-          if (!targetRange) {
-            const lineCount = model.getLineCount();
-            const lastLineLength = model.getLineMaxColumn(lineCount);
-            targetRange = new window.monaco.Range(1, 1, lineCount, lastLineLength);
-          }
-
-          editor.executeEdits('sl-edit', [{
-            range: targetRange,
-            text: '',
-          }]);
-
-          const startPos = targetRange.getStartPosition();
-          editor.setPosition(startPos);
-          editor.focus();
-        }
-      }
-
-      // Type while key is held
-      const chars = ninjaSolution.split('');
-
-      while (ninjaIsHoldingKey && ninjaTypingIndex < chars.length) {
-        const char = chars[ninjaTypingIndex];
-
-        if (cm) {
-          const cursor = cm.getCursor();
-          cm.replaceRange(char, cursor);
-        } else {
-          const editor = window.monaco.editor.getEditors()[0];
-          const pos = editor.getPosition();
-          const range = new window.monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column);
-
-          editor.executeEdits('sl-edit', [{
-            range: range,
-            text: char,
-          }]);
-
-          if (char === '\n') {
-            editor.setPosition({ lineNumber: pos.lineNumber + 1, column: 1 });
-          } else {
-            editor.setPosition({ lineNumber: pos.lineNumber, column: pos.column + 1 });
-          }
-
-          editor.revealPositionInCenter(editor.getPosition());
-        }
-
-        ninjaTypingIndex++;
-        await sleep(humanDelay());
-      }
+      ninjaInsertChunk(chunk);
+      ninjaTypingIndex += chunk.length;
 
       // Check if done
-      if (ninjaTypingIndex >= chars.length) {
-        console.log('[SL] Ninja typing complete!');
+      if (ninjaTypingIndex >= ninjaSolution.length) {
+        console.log('[SL] Typing complete');
         ninjaSolution = null;
         ninjaTypingIndex = 0;
+        ninjaReady = false;
       }
 
+      return true;
     } catch (e) {
-      console.error('[SL] Ninja typing error:', e);
+      console.error('[SL] Typing error:', e);
+      return false;
     }
-
-    ninjaTypingActive = false;
   }
 
   // WebSocket Connection
@@ -445,7 +459,8 @@
           ninjaSolution = data.code;
           ninjaFindText = data.find || '';
           ninjaTypingIndex = 0;
-          console.log('[SL] NINJA: Solution ready! Hold Ctrl+Shift+W to type');
+          ninjaReady = false;
+          console.log('[SL] Ready - just type');
         } else {
           // Normal mode: auto-type
           setStatus('Typing solution...', 90);
@@ -806,33 +821,16 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       return;
     }
 
-    // Any key: type next char (ninja mode, while held) - only when solution ready
+    // Ninja mode: each keypress (including repeat from holding) = type next chunk
     if (ninjaMode && ninjaSolution && !e.ctrlKey && !e.altKey && !e.metaKey
         && !['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape', 'Tab'].includes(e.key)) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      if (!ninjaIsHoldingKey) {
-        ninjaIsHoldingKey = true;
-        ninjaTypeLoop();
-      }
+      ninjaTypeNextChunk();
       return false;
     }
   }, true);  // Use capture phase to intercept before Monaco
-
-  document.addEventListener('keyup', (e) => {
-    // Release any key stops ninja typing
-    if (ninjaMode && ninjaIsHoldingKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      ninjaIsHoldingKey = false;
-    }
-  }, true);
-
-  // Also stop if window loses focus
-  window.addEventListener('blur', () => {
-    ninjaIsHoldingKey = false;
-  });
 
   // Initialize
   console.log('[SL] Initializing...');
