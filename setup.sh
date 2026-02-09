@@ -3,7 +3,7 @@ set -e
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║       ⚡ HackerRank Solver — Setup Script           ║"
+echo "║       ⚡ Soller — Setup Script                       ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
@@ -47,6 +47,6 @@ echo "║                                                      ║"
 echo "║  3. Install the userscript in Tampermonkey:          ║"
 echo "║     userscript/hackerrank-solver.user.js             ║"
 echo "║                                                      ║"
-echo "║  4. Open a HackerRank problem and click ⚡           ║"
+echo "║  4. Open a problem and click ⚡                      ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""

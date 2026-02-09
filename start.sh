@@ -5,5 +5,5 @@ if [ -d ".venv" ]; then
     source .venv/bin/activate
 fi
 
-echo "⚡ Starting HackerRank Solver..."
+echo "⚡ Starting Soller..."
 python3 backend/server.py

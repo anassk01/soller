@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HackerRank Solver Backend
+Soller Backend
 - Receives problem HTML + code from userscript via WebSocket
 - Converts HTML to PNG using Playwright
 - Sends image + code to Google Gemini API
@@ -22,9 +22,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 
-import google.generativeai as genai
-from PIL import Image
-import io
+from google import genai
+from google.genai import types
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -141,7 +140,7 @@ def convert_html_to_image(html_content: str) -> bytes:
 def build_prompt(code: str, language: str = "javascript", ninja_mode: bool = False, is_contest: bool = False) -> str:
     style = "\nStyle: simple readable code, no comments, basic variable names." if ninja_mode else ""
 
-    return f"""Solve this HackerRank problem.
+    return f"""Solve this coding problem.
 
 Language: {language}{style}
 
@@ -162,8 +161,13 @@ def clean_code(text: str) -> str:
 def extract_changes(original_code: str, full_solution: str, cfg: dict) -> dict:
     """Second AI call: compare original vs solution and extract only the changed part."""
     try:
-        genai.configure(api_key=cfg["gemini_api_key"])
-        model = genai.GenerativeModel(cfg.get("gemini_model", "gemini-2.5-flash"))
+        api_key = cfg.get("gemini_api_key", "")
+        backup_key = cfg.get("gemini_api_key_backup", "")
+        key = api_key or backup_key
+        if not key:
+            raise ValueError("No API key")
+        client = genai.Client(api_key=key)
+        model_name = cfg.get("gemini_model", "gemini-2.5-flash")
 
         prompt = f"""Compare these two code snippets and find what changed.
 
@@ -185,7 +189,7 @@ Return EXACTLY in this format:
 
 Only include the part that actually changed. Do NOT include unchanged imports, boilerplate, stdin/stdout handling, or helper functions."""
 
-        response = model.generate_content(prompt, stream=False)
+        response = client.models.generate_content(model=model_name, contents=prompt)
         text = response.text.strip()
 
         if '===FIND===' in text and '===REPLACE===' in text:
@@ -205,15 +209,13 @@ Only include the part that actually changed. Do NOT include unchanged imports, b
 
 def _call_gemini(api_key: str, model_name: str, image_bytes: bytes | None, html_text: str, code: str, language: str, ninja_mode: bool, is_contest: bool) -> str:
     """Single attempt to call Gemini with a given API key."""
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name)
+    client = genai.Client(api_key=api_key)
 
     prompt = build_prompt(code, language, ninja_mode, is_contest)
 
     parts = []
     if image_bytes:
-        img = Image.open(io.BytesIO(image_bytes))
-        parts.append(img)
+        parts.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
 
     if not image_bytes and html_text:
         prompt = f"""Solve this coding problem:
@@ -224,20 +226,19 @@ Starter code ({language}):
 {code}
 
 Return the complete working code. No markdown, no explanation."""
-        parts.append(prompt)
-    else:
-        parts.append(prompt)
 
-    response = model.generate_content(parts, stream=False)
+    parts.append(prompt)
+
+    response = client.models.generate_content(model=model_name, contents=parts)
 
     # Handle empty response
     if not response.candidates or not response.candidates[0].content.parts:
         simple_prompt = f"Complete this {language} code to solve the problem shown in the image. Return only code, no markdown."
         parts_retry = []
         if image_bytes:
-            parts_retry.append(Image.open(io.BytesIO(image_bytes)))
+            parts_retry.append(types.Part.from_bytes(data=image_bytes, mime_type="image/png"))
         parts_retry.append(simple_prompt)
-        response = model.generate_content(parts_retry, stream=False)
+        response = client.models.generate_content(model=model_name, contents=parts_retry)
 
     try:
         raw = response.text.strip()
@@ -483,9 +484,12 @@ def test_gemini():
     """Quick test of Gemini API connection."""
     try:
         cfg = load_config()
-        genai.configure(api_key=cfg["gemini_api_key"])
-        model = genai.GenerativeModel(cfg.get("gemini_model", "gemini-2.5-flash"))
-        resp = model.generate_content("Say 'API connection successful!' in exactly those words.")
+        api_key = cfg.get("gemini_api_key", "")
+        if not api_key:
+            return jsonify({"status": "error", "message": "No Gemini API key configured. Please set one in the dashboard first."}), 400
+        client = genai.Client(api_key=api_key)
+        model_name = cfg.get("gemini_model", "gemini-2.5-flash")
+        resp = client.models.generate_content(model=model_name, contents="Say 'API connection successful!' in exactly those words.")
         return jsonify({"status": "ok", "response": resp.text.strip()})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
@@ -496,14 +500,14 @@ def test_gemini():
 if __name__ == "__main__":
     print("""
 ╔══════════════════════════════════════════════════════╗
-║       🧠 HackerRank Solver — Backend Server         ║
+║       🧠 Soller — Backend Server                     ║
 ║                                                      ║
 ║  Dashboard:  http://localhost:5055                    ║
 ║  WebSocket:  ws://localhost:5055                      ║
 ║                                                      ║
 ║  1. Open dashboard to set your Gemini API key        ║
 ║  2. Install the userscript in Tampermonkey           ║
-║  3. Open a HackerRank problem and click ⚡ Solve     ║
+║  3. Open a problem and click ⚡ Solve                ║
 ╚══════════════════════════════════════════════════════╝
 """)
 

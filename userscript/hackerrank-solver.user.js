@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         HackerRank AI Solver
-// @namespace    https://hackerrank.com
+// @name         Soller
+// @namespace    https://soller.dev
 // @version      3.0
-// @description  Capture HackerRank problems, solve with Gemini AI, auto-type solutions into editor
+// @description  Code assistant with AI support
 // @match        https://www.hackerrank.com/challenges/*/problem*
 // @match        https://www.hackerrank.com/contests/*/challenges/*/problem*
 // @match        https://www.hackerrank.com/contests/*/challenges/*
@@ -32,7 +32,7 @@
   // Inject Styles
   const style = document.createElement('style');
   style.textContent = `
-    #hr-solver-panel {
+    #sl-panel {
       position: fixed;
       bottom: 20px;
       right: 20px;
@@ -44,11 +44,11 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
 
-    #hr-solver-panel.ninja-hidden {
+    #sl-panel.ninja-hidden {
       display: none !important;
     }
 
-    #hr-solver-status {
+    #sl-status {
       background: #1a1a2e;
       border: 1px solid #2a2a4a;
       border-radius: 12px;
@@ -63,15 +63,15 @@
       backdrop-filter: blur(10px);
     }
 
-    #hr-solver-status.show { display: flex; }
+    #sl-status.show { display: flex; }
 
-    .hr-status-row {
+    .sl-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
-    .hr-status-dot {
+    .sl-dot-i {
       width: 8px;
       height: 8px;
       border-radius: 50%;
@@ -80,12 +80,12 @@
       flex-shrink: 0;
     }
 
-    .hr-status-dot.on {
+    .sl-dot-i.on {
       background: #00e676;
       box-shadow: 0 0 8px #00e676;
     }
 
-    .hr-status-msg {
+    .sl-msg {
       font-size: 11px;
       color: #888;
       padding: 6px 8px;
@@ -94,9 +94,9 @@
       display: none;
     }
 
-    .hr-status-msg.show { display: block; }
+    .sl-msg.show { display: block; }
 
-    .hr-progress {
+    .sl-progress {
       height: 3px;
       background: #2a2a4a;
       border-radius: 2px;
@@ -104,9 +104,9 @@
       display: none;
     }
 
-    .hr-progress.show { display: block; }
+    .sl-progress.show { display: block; }
 
-    .hr-progress-bar {
+    .sl-progress-bar {
       height: 100%;
       background: linear-gradient(90deg, #00e676, #3b82f6);
       border-radius: 2px;
@@ -114,7 +114,7 @@
       transition: width 0.5s ease;
     }
 
-    #hr-solve-btn {
+    #sl-btn {
       width: 52px;
       height: 52px;
       border-radius: 50%;
@@ -131,74 +131,74 @@
       position: relative;
     }
 
-    #hr-solve-btn:hover {
+    #sl-btn:hover {
       transform: scale(1.08);
       box-shadow: 0 4px 24px rgba(0, 230, 118, 0.3);
       background: #00e67615;
     }
 
-    #hr-solve-btn.solving {
+    #sl-btn.solving {
       border-color: #ffa502;
       color: #ffa502;
-      animation: hr-spin 1.5s linear infinite;
+      animation: sl-spin 1.5s linear infinite;
     }
 
-    #hr-solve-btn.error {
+    #sl-btn.error {
       border-color: #ff4757;
       color: #ff4757;
     }
 
-    #hr-solve-btn.done {
+    #sl-btn.done {
       border-color: #00e676;
       color: #00e676;
     }
 
-    @keyframes hr-spin {
+    @keyframes sl-spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
 
-    #hr-solve-btn .btn-text {
+    #sl-btn .btn-text {
       animation: none;
     }
 
-    #hr-solve-btn.solving .btn-text {
-      animation: hr-spin 1.5s linear infinite reverse;
+    #sl-btn.solving .btn-text {
+      animation: sl-spin 1.5s linear infinite reverse;
     }
   `;
   document.head.appendChild(style);
 
   // UI
   const panel = document.createElement('div');
-  panel.id = 'hr-solver-panel';
+  panel.id = 'sl-panel';
   panel.innerHTML = `
-    <div id="hr-solver-status">
-      <div class="hr-status-row">
+    <div id="sl-status">
+      <div class="sl-row">
         <div style="display:flex;align-items:center">
-          <span class="hr-status-dot" id="hr-conn-dot"></span>
-          <span id="hr-conn-label">Disconnected</span>
+          <span class="sl-dot-i" id="sl-dot"></span>
+          <span id="sl-label">Disconnected</span>
         </div>
-        <span style="font-size:10px;color:#666" id="hr-model-label">-</span>
+        <span style="font-size:10px;color:#666" id="sl-model">-</span>
       </div>
-      <div class="hr-status-msg" id="hr-status-msg"></div>
-      <div class="hr-progress" id="hr-progress">
-        <div class="hr-progress-bar" id="hr-progress-bar"></div>
+      <div class="sl-msg" id="sl-msg"></div>
+      <div class="sl-progress" id="sl-progress">
+        <div class="sl-progress-bar" id="sl-progress-bar"></div>
       </div>
     </div>
-    <button id="hr-solve-btn" title="Solve with AI">
+    <button id="sl-btn" title="Solve with AI">
       <span class="btn-text">S</span>
     </button>
   `;
   document.body.appendChild(panel);
 
-  const solveBtn = document.getElementById('hr-solve-btn');
-  const statusPanel = document.getElementById('hr-solver-status');
-  const connDot = document.getElementById('hr-conn-dot');
-  const connLabel = document.getElementById('hr-conn-label');
-  const statusMsg = document.getElementById('hr-status-msg');
-  const progressEl = document.getElementById('hr-progress');
-  const progressBar = document.getElementById('hr-progress-bar');
-  const modelLabel = document.getElementById('hr-model-label');
+  const solveBtn = document.getElementById('sl-btn');
+  const statusPanel = document.getElementById('sl-status');
+  const connDot = document.getElementById('sl-dot');
+  const connLabel = document.getElementById('sl-label');
+  const statusMsg = document.getElementById('sl-msg');
+  const progressEl = document.getElementById('sl-progress');
+  const progressBar = document.getElementById('sl-progress-bar');
+  const modelLabel = document.getElementById('sl-model');
 
   // Toggle status panel
   solveBtn.addEventListener('mouseenter', () => {
@@ -229,14 +229,14 @@
     ninjaMode = !ninjaMode;
     if (ninjaMode) {
       panel.classList.add('ninja-hidden');
-      console.log('[HR-Solver] NINJA MODE: ON - UI hidden');
-      console.log('[HR-Solver] Controls:');
+      console.log('[SL] NINJA MODE: ON - UI hidden');
+      console.log('[SL] Controls:');
       console.log('  Ctrl+Shift+S = Scan & fetch solution');
       console.log('  Hold SPACE = Type while holding (only after solution ready)');
       console.log('  Ctrl+Shift+N = Exit ninja mode');
     } else {
       panel.classList.remove('ninja-hidden');
-      console.log('[HR-Solver] NINJA MODE: OFF - UI visible');
+      console.log('[SL] NINJA MODE: OFF - UI visible');
       ninjaSolution = null;
       ninjaFindText = '';
       ninjaTypingIndex = 0;
@@ -273,7 +273,7 @@
       const hasMonaco = window.monaco && window.monaco.editor;
 
       if (!cm && !hasMonaco) {
-        console.error('[HR-Solver] No editor found');
+        console.error('[SL] No editor found');
         ninjaTypingActive = false;
         return;
       }
@@ -323,7 +323,7 @@
             targetRange = new window.monaco.Range(1, 1, lineCount, lastLineLength);
           }
 
-          editor.executeEdits('hr-solver', [{
+          editor.executeEdits('sl-edit', [{
             range: targetRange,
             text: '',
           }]);
@@ -348,7 +348,7 @@
           const pos = editor.getPosition();
           const range = new window.monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column);
 
-          editor.executeEdits('hr-solver', [{
+          editor.executeEdits('sl-edit', [{
             range: range,
             text: char,
           }]);
@@ -368,13 +368,13 @@
 
       // Check if done
       if (ninjaTypingIndex >= chars.length) {
-        console.log('[HR-Solver] Ninja typing complete!');
+        console.log('[SL] Ninja typing complete!');
         ninjaSolution = null;
         ninjaTypingIndex = 0;
       }
 
     } catch (e) {
-      console.error('[HR-Solver] Ninja typing error:', e);
+      console.error('[SL] Ninja typing error:', e);
     }
 
     ninjaTypingActive = false;
@@ -399,7 +399,7 @@
         connDot.classList.add('on');
         connLabel.textContent = 'Connected';
         socket.emit('register', { role: 'userscript' });
-        console.log('[HR-Solver] Connected to server');
+        console.log('[SL] Connected to server');
 
         fetch(`${SERVER_URL}/api/config`)
           .then(r => r.json())
@@ -414,11 +414,11 @@
         isConnected = false;
         connDot.classList.remove('on');
         connLabel.textContent = 'Disconnected';
-        console.log('[HR-Solver] Disconnected');
+        console.log('[SL] Disconnected');
       });
 
       socket.on('status', (data) => {
-        console.log('[HR-Solver] Status:', data);
+        console.log('[SL] Status:', data);
         if (!ninjaMode) {
           const stages = { converting: 25, captured: 40, solving: 60, done: 100, error: 0 };
           setStatus(data.message, stages[data.stage] || 50);
@@ -437,7 +437,7 @@
       });
 
       socket.on('solution', (data) => {
-        console.log('[HR-Solver] Solution received:', data.code.length, 'chars');
+        console.log('[SL] Solution received:', data.code.length, 'chars');
         isSolving = false;
 
         if (ninjaMode) {
@@ -445,7 +445,7 @@
           ninjaSolution = data.code;
           ninjaFindText = data.find || '';
           ninjaTypingIndex = 0;
-          console.log('[HR-Solver] NINJA: Solution ready! Hold Ctrl+Shift+W to type');
+          console.log('[SL] NINJA: Solution ready! Hold Ctrl+Shift+W to type');
         } else {
           // Normal mode: auto-type
           setStatus('Typing solution...', 90);
@@ -465,7 +465,7 @@
       });
 
       socket.on('error', (data) => {
-        console.error('[HR-Solver] Error:', data.message);
+        console.error('[SL] Error:', data.message);
         if (!ninjaMode) {
           setStatus('Error: ' + data.message, 0);
           solveBtn.className = 'error';
@@ -481,7 +481,7 @@
       });
 
     } catch (e) {
-      console.error('[HR-Solver] Connection error:', e);
+      console.error('[SL] Connection error:', e);
     }
   }
 
@@ -576,7 +576,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       const editor = window.monaco.editor.getEditors()[0];
 
       if (!model || !editor) {
-        console.error('[HR-Solver] Could not access Monaco editor');
+        console.error('[SL] Could not access Monaco editor');
         fallbackPaste(solution);
         return;
       }
@@ -602,7 +602,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
         targetRange = new window.monaco.Range(1, 1, lineCount, lastLineLength);
       }
 
-      editor.executeEdits('hr-solver', [{
+      editor.executeEdits('sl-edit', [{
         range: targetRange,
         text: '',
       }]);
@@ -617,7 +617,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
         const pos = editor.getPosition();
         const range = new window.monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column);
 
-        editor.executeEdits('hr-solver', [{
+        editor.executeEdits('sl-edit', [{
           range: range,
           text: chars[i],
         }]);
@@ -641,10 +641,10 @@ td, th { border: 1px solid #ddd; padding: 8px; }
         }
       }
 
-      console.log('[HR-Solver] Finished typing solution');
+      console.log('[SL] Finished typing solution');
 
     } catch (e) {
-      console.error('[HR-Solver] Monaco typing failed:', e);
+      console.error('[SL] Monaco typing failed:', e);
       fallbackPaste(solution);
     }
   }
@@ -656,7 +656,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       const cm = cmEl && cmEl.CodeMirror;
 
       if (!cm) {
-        console.error('[HR-Solver] Could not access CodeMirror editor');
+        console.error('[SL] Could not access CodeMirror editor');
         fallbackPaste(solution);
         return;
       }
@@ -697,10 +697,10 @@ td, th { border: 1px solid #ddd; padding: 8px; }
         }
       }
 
-      console.log('[HR-Solver] Finished typing solution (CodeMirror)');
+      console.log('[SL] Finished typing solution (CodeMirror)');
 
     } catch (e) {
-      console.error('[HR-Solver] CodeMirror typing failed:', e);
+      console.error('[SL] CodeMirror typing failed:', e);
       fallbackPaste(solution);
     }
   }
@@ -733,7 +733,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
     if (isSolving) return;
     if (!isConnected) {
       if (!ninjaMode) setStatus('Not connected to server. Is it running?', 0);
-      console.log('[HR-Solver] Not connected to server');
+      console.log('[SL] Not connected to server');
       return;
     }
 
@@ -742,13 +742,13 @@ td, th { border: 1px solid #ddd; padding: 8px; }
 
     if (!html) {
       if (!ninjaMode) setStatus('Could not find problem statement on page', 0);
-      console.log('[HR-Solver] Could not find problem statement');
+      console.log('[SL] Could not find problem statement');
       return;
     }
 
     if (!code) {
       if (!ninjaMode) setStatus('Could not read editor code', 0);
-      console.log('[HR-Solver] Could not read editor code');
+      console.log('[SL] Could not read editor code');
       return;
     }
 
@@ -769,7 +769,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       ? titleEl.textContent.trim()
       : document.title.replace(/\s*\|.*$/, '').trim();
 
-    console.log(`[HR-Solver] Solving: ${title} (${language}) [${isContest ? 'contest' : 'challenge'}]`);
+    console.log(`[SL] Solving: ${title} (${language}) [${isContest ? 'contest' : 'challenge'}]`);
     if (!ninjaMode) setStatus('Sending to server...', 10);
 
     socket.emit('solve_problem', {
@@ -835,8 +835,8 @@ td, th { border: 1px solid #ddd; padding: 8px; }
   });
 
   // Initialize
-  console.log('[HR-Solver] Initializing...');
-  console.log('[HR-Solver] Press Ctrl+Shift+N to enable NINJA MODE (hidden UI)');
+  console.log('[SL] Initializing...');
+  console.log('[SL] Press Ctrl+Shift+N to enable NINJA MODE (hidden UI)');
   connectToServer();
 
   setInterval(() => {
