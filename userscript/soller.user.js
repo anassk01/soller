@@ -27,7 +27,9 @@
   let ninjaTypingIndex = 0;      // Current position in solution
   let ninjaFindText = '';        // Text to find in editor for replacement
   let ninjaReady = false;        // Editor cleared and ready to receive chars
-  let ninjaTypingActive = true;  // Whether AI typing is enabled (toggle with Ctrl+Shift+J)
+  let ninjaTypingActive = true;  // Whether AI typing is enabled (toggle with Ctrl+Shift+X)
+
+  function log(...args) { if (!ninjaMode) log(...args); }
 
   // Inject Styles
   const style = document.createElement('style');
@@ -229,10 +231,10 @@
     ninjaMode = !ninjaMode;
     if (ninjaMode) {
       panel.classList.add('ninja-hidden');
-      console.log('[SL] NINJA MODE: ON');
+      log('[SL] NINJA MODE: ON');
     } else {
       panel.classList.remove('ninja-hidden');
-      console.log('[SL] NINJA MODE: OFF');
+      log('[SL] NINJA MODE: OFF');
       ninjaSolution = null;
       ninjaFindText = '';
       ninjaTypingIndex = 0;
@@ -382,7 +384,7 @@
 
       // Check if done
       if (ninjaTypingIndex >= ninjaSolution.length) {
-        console.log('[SL] Typing complete');
+        log('[SL] Typing complete');
         ninjaSolution = null;
         ninjaTypingIndex = 0;
         ninjaReady = false;
@@ -414,7 +416,7 @@
         connDot.classList.add('on');
         connLabel.textContent = 'Connected';
         socket.emit('register', { role: 'userscript' });
-        console.log('[SL] Connected to server');
+        log('[SL] Connected to server');
 
         fetch(`${SERVER_URL}/api/config`)
           .then(r => r.json())
@@ -429,11 +431,11 @@
         isConnected = false;
         connDot.classList.remove('on');
         connLabel.textContent = 'Disconnected';
-        console.log('[SL] Disconnected');
+        log('[SL] Disconnected');
       });
 
       socket.on('status', (data) => {
-        console.log('[SL] Status:', data);
+        log('[SL] Status:', data);
         if (!ninjaMode) {
           const stages = { converting: 25, captured: 40, solving: 60, done: 100, error: 0 };
           setStatus(data.message, stages[data.stage] || 50);
@@ -452,7 +454,7 @@
       });
 
       socket.on('solution', (data) => {
-        console.log('[SL] Solution received:', data.code.length, 'chars');
+        log('[SL] Solution received:', data.code.length, 'chars');
         isSolving = false;
 
         if (ninjaMode) {
@@ -461,7 +463,7 @@
           ninjaFindText = data.find || '';
           ninjaTypingIndex = 0;
           ninjaReady = false;
-          console.log('[SL] Ready - just type');
+          log('[SL] Ready - just type');
         } else {
           // Normal mode: auto-type
           setStatus('Typing solution...', 90);
@@ -657,7 +659,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
         }
       }
 
-      console.log('[SL] Finished typing solution');
+      log('[SL] Finished typing solution');
 
     } catch (e) {
       console.error('[SL] Monaco typing failed:', e);
@@ -713,7 +715,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
         }
       }
 
-      console.log('[SL] Finished typing solution (CodeMirror)');
+      log('[SL] Finished typing solution (CodeMirror)');
 
     } catch (e) {
       console.error('[SL] CodeMirror typing failed:', e);
@@ -749,7 +751,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
     if (isSolving) return;
     if (!isConnected) {
       if (!ninjaMode) setStatus('Not connected to server. Is it running?', 0);
-      console.log('[SL] Not connected to server');
+      log('[SL] Not connected to server');
       return;
     }
 
@@ -758,13 +760,13 @@ td, th { border: 1px solid #ddd; padding: 8px; }
 
     if (!html) {
       if (!ninjaMode) setStatus('Could not find problem statement on page', 0);
-      console.log('[SL] Could not find problem statement');
+      log('[SL] Could not find problem statement');
       return;
     }
 
     if (!code) {
       if (!ninjaMode) setStatus('Could not read editor code', 0);
-      console.log('[SL] Could not read editor code');
+      log('[SL] Could not read editor code');
       return;
     }
 
@@ -785,7 +787,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       ? titleEl.textContent.trim()
       : document.title.replace(/\s*\|.*$/, '').trim();
 
-    console.log(`[SL] Solving: ${title} (${language}) [${isContest ? 'contest' : 'challenge'}]`);
+    log(`[SL] Solving: ${title} (${language}) [${isContest ? 'contest' : 'challenge'}]`);
     if (!ninjaMode) setStatus('Sending to server...', 10);
 
     socket.emit('solve_problem', {
@@ -819,7 +821,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
     if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'X') {
       e.preventDefault();
       ninjaTypingActive = !ninjaTypingActive;
-      console.log(`[SL] AI typing ${ninjaTypingActive ? 'ON' : 'OFF'}`);
+      log(`[SL] AI typing ${ninjaTypingActive ? 'ON' : 'OFF'}`);
       return;
     }
 
@@ -842,7 +844,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
   }, true);  // Use capture phase to intercept before Monaco
 
   // Initialize
-  console.log('[SL] Initializing...');
+  log('[SL] Initializing...');
   panel.classList.add('ninja-hidden');
   connectToServer();
 
