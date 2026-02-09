@@ -35,6 +35,7 @@ SCREENSHOTS_DIR.mkdir(exist_ok=True)
 
 DEFAULT_CONFIG = {
     "gemini_api_key": "",
+    "gemini_api_key_backup": "",
     "gemini_model": "gemini-2.5-flash",
     "typing_speed": 15,  # ms per character
     "auto_solve": False,
@@ -202,15 +203,10 @@ Only include the part that actually changed. Do NOT include unchanged imports, b
     return {'find': '', 'code': clean_code(full_solution)}
 
 
-def solve_with_gemini(image_bytes: bytes | None, html_text: str, code: str, language: str = "javascript", ninja_mode: bool = False, is_contest: bool = False) -> str:
-    """Send problem image + code to Gemini and get solution."""
-    cfg = load_config()
-    api_key = cfg.get("gemini_api_key", "")
-    if not api_key:
-        raise ValueError("Gemini API key not configured. Set it in the dashboard.")
-
+def _call_gemini(api_key: str, model_name: str, image_bytes: bytes | None, html_text: str, code: str, language: str, ninja_mode: bool, is_contest: bool) -> str:
+    """Single attempt to call Gemini with a given API key."""
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(cfg.get("gemini_model", "gemini-2.5-flash"))
+    model = genai.GenerativeModel(model_name)
 
     prompt = build_prompt(code, language, ninja_mode, is_contest)
 
@@ -249,9 +245,36 @@ Return the complete working code. No markdown, no explanation."""
         if response.candidates and response.candidates[0].content.parts:
             raw = response.candidates[0].content.parts[0].text.strip()
         else:
-            raise ValueError("Gemini returned empty response. Try again or check your API key.")
+            raise ValueError("Gemini returned empty response.")
 
     return clean_code(raw)
+
+
+def solve_with_gemini(image_bytes: bytes | None, html_text: str, code: str, language: str = "javascript", ninja_mode: bool = False, is_contest: bool = False) -> str:
+    """Send problem image + code to Gemini. Falls back to backup key on failure."""
+    cfg = load_config()
+    api_key = cfg.get("gemini_api_key", "")
+    backup_key = cfg.get("gemini_api_key_backup", "")
+    model_name = cfg.get("gemini_model", "gemini-2.5-flash")
+
+    if not api_key and not backup_key:
+        raise ValueError("No Gemini API key configured. Set one in the dashboard.")
+
+    keys = [k for k in [api_key, backup_key] if k]
+
+    last_error = None
+    for i, key in enumerate(keys):
+        label = "primary" if i == 0 else "backup"
+        try:
+            print(f"[GEMINI] Trying {label} key...")
+            return _call_gemini(key, model_name, image_bytes, html_text, code, language, ninja_mode, is_contest)
+        except Exception as e:
+            last_error = e
+            print(f"[WARN] {label} key failed: {e}")
+            if i < len(keys) - 1:
+                print(f"[GEMINI] Falling back to {('backup' if i == 0 else 'primary')} key...")
+
+    raise ValueError(f"All API keys failed. Last error: {last_error}")
 
 
 # ─── WebSocket Events ────────────────────────────────────────────────────────

@@ -806,8 +806,9 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       return;
     }
 
-    // SPACE: Start typing (ninja mode, while held) - only when solution ready
-    if (e.code === 'Space' && ninjaMode && ninjaSolution) {
+    // Any key: type next char (ninja mode, while held) - only when solution ready
+    if (ninjaMode && ninjaSolution && !e.ctrlKey && !e.altKey && !e.metaKey
+        && !['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape', 'Tab'].includes(e.key)) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
@@ -820,8 +821,8 @@ td, th { border: 1px solid #ddd; padding: 8px; }
   }, true);  // Use capture phase to intercept before Monaco
 
   document.addEventListener('keyup', (e) => {
-    // Release SPACE stops ninja typing
-    if (e.code === 'Space' && ninjaMode) {
+    // Release any key stops ninja typing
+    if (ninjaMode && ninjaIsHoldingKey) {
       e.preventDefault();
       e.stopPropagation();
       ninjaIsHoldingKey = false;
