@@ -815,8 +815,8 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       return;
     }
 
-    // Ctrl+Shift+J: Toggle AI typing on/off in ninja mode
-    if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'J') {
+    // Ctrl+Shift+X: Toggle AI typing on/off in ninja mode
+    if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'X') {
       e.preventDefault();
       ninjaTypingActive = !ninjaTypingActive;
       console.log(`[SL] AI typing ${ninjaTypingActive ? 'ON' : 'OFF'}`);
