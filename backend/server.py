@@ -137,51 +137,72 @@ def convert_html_to_image(html_content: str) -> bytes:
 
 # ─── Gemini API ───────────────────────────────────────────────────────────────
 
-def build_prompt(code: str, language: str = "javascript", ninja_mode: bool = False) -> str:
-    # Find the function name to solve - skip helper functions
-    helper_funcs = {'readLine', 'readline', 'main', 'processData', 'input', 'print', 'parseInt', 'parseFloat'}
+def build_prompt(code: str, language: str = "javascript", ninja_mode: bool = False, is_contest: bool = False) -> str:
+    style = "\nStyle: simple readable code, no comments, basic variable names." if ninja_mode else ""
 
-    # Find all function definitions
-    func_matches = re.findall(r'(?:function\s+|def\s+)(\w+)', code)
+    return f"""Solve this HackerRank problem.
 
-    # Pick the first non-helper function, or the last one if all are helpers
-    func_name = "solve"
-    for name in func_matches:
-        if name not in helper_funcs:
-            func_name = name
-            break
+Language: {language}{style}
 
-    # If no good match, try the last function (often the one to implement)
-    if func_name == "solve" and func_matches:
-        func_name = func_matches[-1]
+Starter code:
+{code}
 
-    if ninja_mode:
-        # NINJA MODE: Human-like, no comments, medium-level solution
-        return f"""Solve this HackerRank problem by implementing the function `{func_name}`.
-
-Language: {language}
-Style: simple readable code, no comments, basic variable names (i, j, n, arr, result).
-
-Return ONLY the complete function `{func_name}` - from function signature to closing brace.
-No markdown, no backticks, no explanation. Just the raw function code."""
-    else:
-        return f"""Solve this HackerRank problem by implementing the function `{func_name}`.
-
-Language: {language}
-
-Return ONLY the complete function `{func_name}` - from function signature to closing brace.
-No markdown, no backticks, no explanation. Just the raw function code."""
+Return the complete working code. No markdown, no explanation."""
 
 
-def clean_solution(full_solution: str) -> str:
-    """Clean markdown and whitespace from AI response."""
-    solution = full_solution.strip()
-    solution = re.sub(r'^```\w*\n?', '', solution)
-    solution = re.sub(r'\n?```$', '', solution)
-    return solution.strip()
+def clean_code(text: str) -> str:
+    """Strip markdown fences and whitespace."""
+    text = text.strip()
+    text = re.sub(r'^```\w*\n?', '', text)
+    text = re.sub(r'\n?```\s*$', '', text)
+    return text.strip()
 
 
-def solve_with_gemini(image_bytes: bytes | None, html_text: str, code: str, language: str = "javascript", ninja_mode: bool = False) -> str:
+def extract_changes(original_code: str, full_solution: str, cfg: dict) -> dict:
+    """Second AI call: compare original vs solution and extract only the changed part."""
+    try:
+        genai.configure(api_key=cfg["gemini_api_key"])
+        model = genai.GenerativeModel(cfg.get("gemini_model", "gemini-2.5-flash"))
+
+        prompt = f"""Compare these two code snippets and find what changed.
+
+ORIGINAL CODE:
+---
+{original_code}
+---
+
+SOLUTION CODE:
+---
+{full_solution}
+---
+
+Return EXACTLY in this format:
+===FIND===
+(copy the exact part from ORIGINAL CODE that was changed/replaced — verbatim, character-for-character)
+===REPLACE===
+(copy the exact part from SOLUTION CODE that replaces it — verbatim, character-for-character)
+
+Only include the part that actually changed. Do NOT include unchanged imports, boilerplate, stdin/stdout handling, or helper functions."""
+
+        response = model.generate_content(prompt, stream=False)
+        text = response.text.strip()
+
+        if '===FIND===' in text and '===REPLACE===' in text:
+            after_find = text.split('===FIND===', 1)[1]
+            parts = after_find.split('===REPLACE===', 1)
+            find = clean_code(parts[0].strip())
+            replace = clean_code(parts[1].strip()) if len(parts) > 1 else ''
+            if find and replace:
+                return {'find': find, 'code': replace}
+
+    except Exception as e:
+        print(f"[WARN] extract_changes failed: {e}")
+
+    # Fallback: return full solution, empty find
+    return {'find': '', 'code': clean_code(full_solution)}
+
+
+def solve_with_gemini(image_bytes: bytes | None, html_text: str, code: str, language: str = "javascript", ninja_mode: bool = False, is_contest: bool = False) -> str:
     """Send problem image + code to Gemini and get solution."""
     cfg = load_config()
     api_key = cfg.get("gemini_api_key", "")
@@ -191,7 +212,7 @@ def solve_with_gemini(image_bytes: bytes | None, html_text: str, code: str, lang
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(cfg.get("gemini_model", "gemini-2.5-flash"))
 
-    prompt = build_prompt(code, language, ninja_mode)
+    prompt = build_prompt(code, language, ninja_mode, is_contest)
 
     parts = []
     if image_bytes:
@@ -199,8 +220,6 @@ def solve_with_gemini(image_bytes: bytes | None, html_text: str, code: str, lang
         parts.append(img)
 
     if not image_bytes and html_text:
-        # If image conversion failed, send HTML as text
-        style_hint = "Use simple readable code, no comments, basic variable names." if ninja_mode else ""
         prompt = f"""Solve this coding problem:
 
 {html_text[:15000]}
@@ -208,8 +227,7 @@ def solve_with_gemini(image_bytes: bytes | None, html_text: str, code: str, lang
 Starter code ({language}):
 {code}
 
-{style_hint}
-Complete the function(s). Return only code, no markdown, no explanation."""
+Return the complete working code. No markdown, no explanation."""
         parts.append(prompt)
     else:
         parts.append(prompt)
@@ -218,8 +236,7 @@ Complete the function(s). Return only code, no markdown, no explanation."""
 
     # Handle empty response
     if not response.candidates or not response.candidates[0].content.parts:
-        # Try again with simpler prompt
-        simple_prompt = f"Complete this {language} function to solve the problem shown in the image. Return only code, no markdown."
+        simple_prompt = f"Complete this {language} code to solve the problem shown in the image. Return only code, no markdown."
         parts_retry = []
         if image_bytes:
             parts_retry.append(Image.open(io.BytesIO(image_bytes)))
@@ -227,15 +244,14 @@ Complete the function(s). Return only code, no markdown, no explanation."""
         response = model.generate_content(parts_retry, stream=False)
 
     try:
-        solution = response.text.strip()
+        raw = response.text.strip()
     except Exception:
-        # Fallback: try to extract from candidates
         if response.candidates and response.candidates[0].content.parts:
-            solution = response.candidates[0].content.parts[0].text.strip()
+            raw = response.candidates[0].content.parts[0].text.strip()
         else:
             raise ValueError("Gemini returned empty response. Try again or check your API key.")
 
-    return clean_solution(solution)
+    return clean_code(raw)
 
 
 # ─── WebSocket Events ────────────────────────────────────────────────────────
@@ -279,24 +295,13 @@ def do_solve(sid, data):
     problem_title = data.get("title", "Unknown Problem")
     problem_url = data.get("url", "")
     ninja_mode = data.get("ninja_mode", False)
-
-    # Detect target function
-    helper_funcs = {'readLine', 'readline', 'main', 'processData', 'input', 'print', 'parseInt', 'parseFloat'}
-    func_matches = re.findall(r'(?:function\s+|def\s+)(\w+)', code)
-    target_func = "solve"
-    for name in func_matches:
-        if name not in helper_funcs:
-            target_func = name
-            break
-    if target_func == "solve" and func_matches:
-        target_func = func_matches[-1]
+    is_contest = data.get("is_contest", False)
 
     print(f"\n{'='*60}")
     print(f"[SOLVE] {problem_title}")
     print(f"[URL]   {problem_url}")
     print(f"[LANG]  {language}")
-    print(f"[FUNC]  {target_func}")
-    print(f"[MODE]  {'NINJA' if ninja_mode else 'Normal'}")
+    print(f"[MODE]  {'NINJA' if ninja_mode else 'Normal'}{'  + CONTEST' if is_contest else ''}")
     print(f"[CODE]  {len(code)} chars")
     print(f"[HTML]  {len(html_content)} chars")
     print(f"{'='*60}\n")
@@ -330,14 +335,28 @@ def do_solve(sid, data):
         mode_msg = "Sending to Gemini AI (ninja mode)..." if ninja_mode else "Sending to Gemini AI..."
         socketio.emit("status", {"stage": "solving", "message": mode_msg}, to=sid)
 
-        solution = solve_with_gemini(image_bytes, html_content, code, language, ninja_mode)
+        full_solution = solve_with_gemini(image_bytes, html_content, code, language, ninja_mode, is_contest)
 
-        print(f"\n[SOLUTION] ({len(solution)} chars):\n{solution[:200]}...\n")
+        print(f"\n[FULL SOLUTION] ({len(full_solution)} chars):\n{full_solution[:200]}...\n")
+
+        # Second AI call: extract only the changed part
+        socketio.emit("status", {"stage": "solving", "message": "Extracting changes..."}, to=sid)
+        result = extract_changes(code, full_solution, load_config())
+        solution = result['code']
+        find_text = result['find']
+
+        print(f"[SOLUTION] ({len(solution)} chars):\n{solution[:200]}...")
+        if find_text:
+            print(f"[FIND] ({len(find_text)} chars):\n{find_text[:200]}...")
+        else:
+            print("[FIND] Empty — will replace entire editor")
+        print()
 
         # Step 3: Send solution back
         socketio.emit("status", {"stage": "done", "message": "Solution ready!"}, to=sid)
         socketio.emit("solution", {
             "code": solution,
+            "find": find_text,
             "title": problem_title,
             "language": language,
         }, to=sid)

@@ -5,6 +5,7 @@
 // @description  Capture HackerRank problems, solve with Gemini AI, auto-type solutions into editor
 // @match        https://www.hackerrank.com/challenges/*/problem*
 // @match        https://www.hackerrank.com/contests/*/challenges/*/problem*
+// @match        https://www.hackerrank.com/contests/*/challenges/*
 // @grant        none
 // @require      https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js
 // ==/UserScript==
@@ -24,6 +25,7 @@
   let ninjaMode = false;
   let ninjaSolution = null;      // Buffered solution waiting to be typed
   let ninjaTypingIndex = 0;      // Current position in solution
+  let ninjaFindText = '';        // Text to find in editor for replacement
   let ninjaIsHoldingKey = false; // Is the user currently holding Ctrl+Shift+W
   let ninjaTypingActive = false; // Typing loop running
 
@@ -236,6 +238,7 @@
       panel.classList.remove('ninja-hidden');
       console.log('[HR-Solver] NINJA MODE: OFF - UI visible');
       ninjaSolution = null;
+      ninjaFindText = '';
       ninjaTypingIndex = 0;
     }
   }
@@ -264,80 +267,71 @@
     ninjaTypingActive = true;
 
     try {
-      const model = window.monaco.editor.getModels()[0];
-      const editor = window.monaco.editor.getEditors()[0];
+      // Detect editor type
+      const cmEl = document.querySelector('.CodeMirror');
+      const cm = cmEl && cmEl.CodeMirror;
+      const hasMonaco = window.monaco && window.monaco.editor;
 
-      if (!model || !editor) {
-        console.error('[HR-Solver] Cannot access Monaco editor');
+      if (!cm && !hasMonaco) {
+        console.error('[HR-Solver] No editor found');
         ninjaTypingActive = false;
         return;
       }
 
-      // On first char, set up the range to replace
+      // On first char, clear the target area using findText from AI
       if (ninjaTypingIndex === 0) {
-        const currentCode = model.getValue();
-        const lines = currentCode.split('\n');
+        if (cm) {
+          if (ninjaFindText) {
+            const content = cm.getValue();
+            const idx = content.indexOf(ninjaFindText);
+            if (idx !== -1) {
+              const from = cm.posFromIndex(idx);
+              const to = cm.posFromIndex(idx + ninjaFindText.length);
+              cm.replaceRange('', from, to);
+              cm.setCursor(from);
+            } else {
+              cm.setValue('');
+              cm.setCursor(0, 0);
+            }
+          } else {
+            cm.setValue('');
+            cm.setCursor(0, 0);
+          }
+          cm.focus();
+        } else {
+          const model = window.monaco.editor.getModels()[0];
+          const editor = window.monaco.editor.getEditors()[0];
 
-        // Extract function name from solution
-        const funcMatch = ninjaSolution.match(/(?:function\s+|def\s+)(\w+)/);
-        const funcName = funcMatch ? funcMatch[1] : null;
+          let targetRange;
 
-        let startLine = -1;
-        let endLine = -1;
-
-        if (funcName) {
-          const funcPattern = new RegExp(`^\\s*(?:function\\s+${funcName}|def\\s+${funcName})\\s*\\(`);
-
-          for (let i = 0; i < lines.length; i++) {
-            if (funcPattern.test(lines[i])) {
-              startLine = i + 1;
-
-              let braceCount = 0;
-              let foundOpen = false;
-
-              for (let j = i; j < lines.length; j++) {
-                for (const ch of lines[j]) {
-                  if (ch === '{') { braceCount++; foundOpen = true; }
-                  if (ch === '}') { braceCount--; }
-                }
-                if (foundOpen && braceCount === 0) {
-                  endLine = j + 1;
-                  break;
-                }
-                if (!foundOpen && j > i) {
-                  const indent = lines[j].match(/^(\s*)/)[1].length;
-                  const firstIndent = lines[i].match(/^(\s*)/)[1].length;
-                  if (lines[j].trim() && indent <= firstIndent) {
-                    endLine = j;
-                    break;
-                  }
-                }
-              }
-              if (endLine === -1) endLine = lines.length;
-              break;
+          if (ninjaFindText) {
+            const content = model.getValue();
+            const idx = content.indexOf(ninjaFindText);
+            if (idx !== -1) {
+              const startPos = model.getPositionAt(idx);
+              const endPos = model.getPositionAt(idx + ninjaFindText.length);
+              targetRange = new window.monaco.Range(
+                startPos.lineNumber, startPos.column,
+                endPos.lineNumber, endPos.column
+              );
             }
           }
+
+          if (!targetRange) {
+            const lineCount = model.getLineCount();
+            const lastLineLength = model.getLineMaxColumn(lineCount);
+            targetRange = new window.monaco.Range(1, 1, lineCount, lastLineLength);
+          }
+
+          editor.executeEdits('hr-solver', [{
+            range: targetRange,
+            text: '',
+          }]);
+
+          const startPos = targetRange.getStartPosition();
+          editor.setPosition(startPos);
+          editor.focus();
         }
-
-        let targetRange;
-        if (startLine !== -1 && endLine !== -1) {
-          const endCol = lines[endLine - 1].length + 1;
-          targetRange = new window.monaco.Range(startLine, 1, endLine, endCol);
-        } else {
-          const lineCount = model.getLineCount();
-          const lastLineLength = model.getLineMaxColumn(lineCount);
-          targetRange = new window.monaco.Range(1, 1, lineCount, lastLineLength);
-        }
-
-        // Clear the target range
-        editor.executeEdits('hr-solver', [{
-          range: targetRange,
-          text: '',
-        }]);
-
-        const startPos = targetRange.getStartPosition();
-        editor.setPosition(startPos);
-        editor.focus();
       }
 
       // Type while key is held
@@ -345,24 +339,30 @@
 
       while (ninjaIsHoldingKey && ninjaTypingIndex < chars.length) {
         const char = chars[ninjaTypingIndex];
-        const pos = editor.getPosition();
-        const range = new window.monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column);
 
-        editor.executeEdits('hr-solver', [{
-          range: range,
-          text: char,
-        }]);
-
-        if (char === '\n') {
-          editor.setPosition({ lineNumber: pos.lineNumber + 1, column: 1 });
+        if (cm) {
+          const cursor = cm.getCursor();
+          cm.replaceRange(char, cursor);
         } else {
-          editor.setPosition({ lineNumber: pos.lineNumber, column: pos.column + 1 });
+          const editor = window.monaco.editor.getEditors()[0];
+          const pos = editor.getPosition();
+          const range = new window.monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column);
+
+          editor.executeEdits('hr-solver', [{
+            range: range,
+            text: char,
+          }]);
+
+          if (char === '\n') {
+            editor.setPosition({ lineNumber: pos.lineNumber + 1, column: 1 });
+          } else {
+            editor.setPosition({ lineNumber: pos.lineNumber, column: pos.column + 1 });
+          }
+
+          editor.revealPositionInCenter(editor.getPosition());
         }
 
-        editor.revealPositionInCenter(editor.getPosition());
         ninjaTypingIndex++;
-
-        // Human-like delay
         await sleep(humanDelay());
       }
 
@@ -443,12 +443,13 @@
         if (ninjaMode) {
           // NINJA MODE: Buffer solution for manual typing
           ninjaSolution = data.code;
+          ninjaFindText = data.find || '';
           ninjaTypingIndex = 0;
           console.log('[HR-Solver] NINJA: Solution ready! Hold Ctrl+Shift+W to type');
         } else {
           // Normal mode: auto-type
           setStatus('Typing solution...', 90);
-          typeIntoMonaco(data.code).then(() => {
+          typeIntoEditor(data.code, data.find || '').then(() => {
             solveBtn.className = 'done';
             solveBtn.querySelector('.btn-text').textContent = 'OK';
             setStatus('Done! Solution applied.', 100);
@@ -486,7 +487,8 @@
 
   // Get Problem Elements
   function getProblemElement() {
-    return document.querySelector('.problem-statement')
+    return document.querySelector('.challenge_problem_statement')
+      || document.querySelector('.problem-statement')
       || document.querySelector('.challenge-body-html')
       || document.querySelector('.challenge-body');
   }
@@ -514,6 +516,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
   }
 
   function getEditorCode() {
+    // Monaco editor (challenge pages)
     try {
       if (window.monaco && window.monaco.editor) {
         const models = window.monaco.editor.getModels();
@@ -521,6 +524,15 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       }
     } catch (e) {}
 
+    // CodeMirror editor (contest pages)
+    try {
+      const cmEl = document.querySelector('.CodeMirror');
+      if (cmEl && cmEl.CodeMirror) {
+        return cmEl.CodeMirror.getValue();
+      }
+    } catch (e) {}
+
+    // DOM fallback for Monaco
     try {
       const editors = document.querySelectorAll('.monaco-editor');
       if (editors.length > 0) {
@@ -557,8 +569,8 @@ td, th { border: 1px solid #ddd; padding: 8px; }
     return 'javascript';
   }
 
-  // Type into Monaco Editor (normal mode)
-  async function typeIntoMonaco(solution) {
+  // Type into Monaco Editor
+  async function typeIntoMonaco(solution, findText) {
     try {
       const model = window.monaco.editor.getModels()[0];
       const editor = window.monaco.editor.getEditors()[0];
@@ -569,55 +581,22 @@ td, th { border: 1px solid #ddd; padding: 8px; }
         return;
       }
 
-      const currentCode = model.getValue();
-      const lines = currentCode.split('\n');
+      let targetRange;
 
-      const funcMatch = solution.match(/(?:function\s+|def\s+)(\w+)/);
-      const funcName = funcMatch ? funcMatch[1] : null;
-
-      let startLine = -1;
-      let endLine = -1;
-
-      if (funcName) {
-        const funcPattern = new RegExp(`^\\s*(?:function\\s+${funcName}|def\\s+${funcName})\\s*\\(`);
-
-        for (let i = 0; i < lines.length; i++) {
-          if (funcPattern.test(lines[i])) {
-            startLine = i + 1;
-
-            let braceCount = 0;
-            let foundOpen = false;
-
-            for (let j = i; j < lines.length; j++) {
-              for (const ch of lines[j]) {
-                if (ch === '{') { braceCount++; foundOpen = true; }
-                if (ch === '}') { braceCount--; }
-              }
-              if (foundOpen && braceCount === 0) {
-                endLine = j + 1;
-                break;
-              }
-              if (!foundOpen && j > i) {
-                const indent = lines[j].match(/^(\s*)/)[1].length;
-                const firstIndent = lines[i].match(/^(\s*)/)[1].length;
-                if (lines[j].trim() && indent <= firstIndent) {
-                  endLine = j;
-                  break;
-                }
-              }
-            }
-            if (endLine === -1) endLine = lines.length;
-            break;
-          }
+      if (findText) {
+        const content = model.getValue();
+        const idx = content.indexOf(findText);
+        if (idx !== -1) {
+          const startPos = model.getPositionAt(idx);
+          const endPos = model.getPositionAt(idx + findText.length);
+          targetRange = new window.monaco.Range(
+            startPos.lineNumber, startPos.column,
+            endPos.lineNumber, endPos.column
+          );
         }
       }
 
-      let targetRange;
-
-      if (startLine !== -1 && endLine !== -1) {
-        const endCol = lines[endLine - 1].length + 1;
-        targetRange = new window.monaco.Range(startLine, 1, endLine, endCol);
-      } else {
+      if (!targetRange) {
         const lineCount = model.getLineCount();
         const lastLineLength = model.getLineMaxColumn(lineCount);
         targetRange = new window.monaco.Range(1, 1, lineCount, lastLineLength);
@@ -670,6 +649,71 @@ td, th { border: 1px solid #ddd; padding: 8px; }
     }
   }
 
+  // Type into CodeMirror Editor (contest pages)
+  async function typeIntoCodeMirror(solution, findText) {
+    try {
+      const cmEl = document.querySelector('.CodeMirror');
+      const cm = cmEl && cmEl.CodeMirror;
+
+      if (!cm) {
+        console.error('[HR-Solver] Could not access CodeMirror editor');
+        fallbackPaste(solution);
+        return;
+      }
+
+      if (findText) {
+        const content = cm.getValue();
+        const idx = content.indexOf(findText);
+        if (idx !== -1) {
+          const from = cm.posFromIndex(idx);
+          const to = cm.posFromIndex(idx + findText.length);
+          cm.replaceRange('', from, to);
+          cm.setCursor(from);
+        } else {
+          cm.setValue('');
+          cm.setCursor(0, 0);
+        }
+      } else {
+        cm.setValue('');
+        cm.setCursor(0, 0);
+      }
+
+      cm.focus();
+
+      const chars = solution.split('');
+
+      for (let i = 0; i < chars.length; i++) {
+        const cursor = cm.getCursor();
+        cm.replaceRange(chars[i], cursor);
+
+        if (typingSpeed > 0) {
+          const delay = chars[i] === ' ' || chars[i] === '\n' ? typingSpeed / 3 : typingSpeed;
+          await sleep(delay);
+        }
+
+        const pct = Math.round((i / chars.length) * 100);
+        if (pct % 5 === 0) {
+          setStatus(`Typing... ${pct}%`, 90 + (pct / 10));
+        }
+      }
+
+      console.log('[HR-Solver] Finished typing solution (CodeMirror)');
+
+    } catch (e) {
+      console.error('[HR-Solver] CodeMirror typing failed:', e);
+      fallbackPaste(solution);
+    }
+  }
+
+  // Dispatcher: pick the right editor to type into
+  async function typeIntoEditor(solution, findText) {
+    const cmEl = document.querySelector('.CodeMirror');
+    if (cmEl && cmEl.CodeMirror) {
+      return typeIntoCodeMirror(solution, findText);
+    }
+    return typeIntoMonaco(solution, findText);
+  }
+
   function fallbackPaste(code) {
     try {
       navigator.clipboard.writeText(code).then(() => {
@@ -715,10 +759,17 @@ td, th { border: 1px solid #ddd; padding: 8px; }
     }
 
     const language = detectLanguage();
-    const title = document.title.replace(' | HackerRank', '').trim();
     const url = window.location.href;
+    const isContest = /\/contests\//.test(url);
 
-    console.log(`[HR-Solver] Solving: ${title} (${language})`);
+    // Contest pages have better title in specific elements
+    const titleEl = document.querySelector('h2.hr_tour-challenge-name')
+      || document.querySelector('.challenge-view h2');
+    const title = titleEl
+      ? titleEl.textContent.trim()
+      : document.title.replace(/\s*\|.*$/, '').trim();
+
+    console.log(`[HR-Solver] Solving: ${title} (${language}) [${isContest ? 'contest' : 'challenge'}]`);
     if (!ninjaMode) setStatus('Sending to server...', 10);
 
     socket.emit('solve_problem', {
@@ -727,7 +778,8 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       language: language,
       title: title,
       url: url,
-      ninja_mode: ninjaMode,  // Tell backend to use human-like prompt
+      ninja_mode: ninjaMode,
+      is_contest: isContest,
     });
   }
 
