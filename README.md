@@ -1,8 +1,8 @@
-# ⚡ HackerRank AI Solver
+# ⚡ Soller
 
-AI-powered tool that captures HackerRank problems, solves them with Google Gemini, and auto-types the solution into the editor — character by character.
+AI-powered code assistant that captures coding problems, solves them with Google Gemini, and auto-types the solution into the editor — character by character.
 
-> **Note:** This tool is for educational purposes only. Use responsibly and follow HackerRank's terms of service.
+> **Note:** This tool is for educational purposes only.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ AI-powered tool that captures HackerRank problems, solves them with Google Gemin
 │  Tampermonkey        │ ◄──────────────────►   │  Python Backend      │
 │  Userscript          │                        │                      │
 │  - Captures problem  │   POST problem HTML    │  - HTML → PNG        │
-│  - Reads Monaco code │ ──────────────────►    │    (Playwright)      │
+│  - Reads editor code │ ──────────────────►    │    (Playwright)      │
 │  - Types solution    │                        │  - PNG + Code →      │
 │    char by char      │   Streams solution     │    Gemini API        │
 │                      │ ◄──────────────────    │  - Returns solution  │
@@ -61,22 +61,22 @@ In the dashboard, paste your Gemini API key and click **Save**. Click **Test API
 
 - Open Tampermonkey in your browser
 - Click **Create a new script**
-- Paste the contents of `userscript/hackerrank-solver.user.js`
+- Paste the contents of `userscript/soller.user.js`
 - Save (Ctrl+S)
 
 ### 5. Solve Problems
 
-1. Open any HackerRank problem page
+1. Open any coding problem page
 2. You'll see a green ⚡ button in the bottom-right corner
 3. Click it (or press **Ctrl+Shift+S**)
 4. Watch the AI solution get typed into the editor!
 
 ## How It Works
 
-1. **Capture**: The userscript grabs the problem's HTML (including SVG diagrams) and the current Monaco editor code
+1. **Capture**: The userscript grabs the problem's HTML (including SVG diagrams) and the current editor code
 2. **Convert**: The backend renders the HTML into a PNG screenshot using Playwright's headless Chromium
 3. **Solve**: The PNG image + starter code are sent to Google Gemini with a carefully crafted prompt
-4. **Type**: The solution streams back and gets typed character-by-character into the Monaco editor
+4. **Type**: The solution streams back and gets typed character-by-character into the editor
 
 ## Configuration
 
@@ -91,14 +91,14 @@ All config is managed through the dashboard at `http://localhost:5055`:
 ## File Structure
 
 ```
-hackerrank-solver/
+soller/
 ├── backend/
 │   ├── server.py          # Flask + SocketIO backend
 │   └── requirements.txt   # Python dependencies
 ├── frontend/
 │   └── index.html         # Dashboard UI
 ├── userscript/
-│   └── hackerrank-solver.user.js  # Tampermonkey script
+│   └── soller.user.js     # Tampermonkey script
 ├── setup.sh               # One-command setup
 ├── start.sh               # Start server
 └── README.md
@@ -113,7 +113,7 @@ hackerrank-solver/
 
 ## Supported Languages
 
-The solver auto-detects the language from HackerRank's selector. Tested with:
+The solver auto-detects the language from the editor. Tested with:
 - JavaScript / Node.js
 - Python 3
 - Java
@@ -130,11 +130,11 @@ The solver auto-detects the language from HackerRank's selector. Tested with:
 - Open http://localhost:5055 and set your API key
 
 **"Could not find problem statement"**
-- Make sure you're on a `/problem` page (not `/submissions`)
+- Make sure you're on a problem page
 - Wait for the page to fully load
 
 **Solution doesn't type into editor**
-- The script needs Monaco to be accessible via `window.monaco`
+- The script needs the editor to be accessible
 - If it fails, the solution is copied to clipboard instead
 
 **Playwright installation fails**
@@ -144,7 +144,7 @@ The solver auto-detects the language from HackerRank's selector. Tested with:
 ## Features
 
 - **AI-Powered Solving**: Uses Google Gemini 2.5 for intelligent problem solving
-- **Auto-Type Animation**: Types solution character-by-character into Monaco editor
+- **Auto-Type Animation**: Types solution character-by-character into the editor
 - **Live Dashboard**: Real-time monitoring, problem previews, and solve history
 - **Multi-Language Support**: JavaScript, Python, Java, C++, Go, and more
 - **Ninja Mode**: Hidden UI mode for discreet operation (Ctrl+Shift+N)
