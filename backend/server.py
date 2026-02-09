@@ -138,7 +138,7 @@ def convert_html_to_image(html_content: str) -> bytes:
 # ─── Gemini API ───────────────────────────────────────────────────────────────
 
 def build_prompt(code: str, language: str = "javascript", ninja_mode: bool = False, is_contest: bool = False) -> str:
-    style = "\nStyle: simple readable code, no comments, basic variable names." if ninja_mode else ""
+    style = "\nStyle: write natural human-like code. No comments at all. Use obvious clear variable names (e.g. sum, count, result, left, right, arr, temp). Keep logic straightforward like a student would write. No clever tricks or overly concise one-liners. Do not use the most common or popular solution approach — pick a different valid algorithm or implementation strategy." if ninja_mode else ""
 
     return f"""Solve this coding problem.
 

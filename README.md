@@ -68,7 +68,7 @@ In the dashboard, paste your Gemini API key and click **Save**. Click **Test API
 
 1. Open any coding problem page
 2. You'll see a green ⚡ button in the bottom-right corner
-3. Click it (or press **Ctrl+Shift+S**)
+3. Click it (or press **Ctrl+Shift+K**)
 4. Watch the AI solution get typed into the editor!
 
 ## How It Works
@@ -108,7 +108,7 @@ soller/
 
 | Shortcut | Action |
 |----------|--------|
-| **Ctrl+Shift+S** | Solve current problem |
+| **Ctrl+Shift+K** | Solve current problem |
 | Click ⚡ button | Solve current problem |
 
 ## Supported Languages

@@ -27,6 +27,7 @@
   let ninjaTypingIndex = 0;      // Current position in solution
   let ninjaFindText = '';        // Text to find in editor for replacement
   let ninjaReady = false;        // Editor cleared and ready to receive chars
+  let ninjaTypingActive = true;  // Whether AI typing is enabled (toggle with Ctrl+Shift+J)
 
   // Inject Styles
   const style = document.createElement('style');
@@ -814,15 +815,23 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       return;
     }
 
-    // Ctrl+Shift+S: Solve/Scan
-    if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'S') {
+    // Ctrl+Shift+J: Toggle AI typing on/off in ninja mode
+    if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'J') {
+      e.preventDefault();
+      ninjaTypingActive = !ninjaTypingActive;
+      console.log(`[SL] AI typing ${ninjaTypingActive ? 'ON' : 'OFF'}`);
+      return;
+    }
+
+    // Ctrl+Shift+K: Solve/Scan
+    if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'K') {
       e.preventDefault();
       solve();
       return;
     }
 
     // Ninja mode: each keypress (including repeat from holding) = type next chunk
-    if (ninjaMode && ninjaSolution && !e.ctrlKey && !e.altKey && !e.metaKey
+    if (ninjaMode && ninjaSolution && ninjaTypingActive && !e.ctrlKey && !e.altKey && !e.metaKey
         && !['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape', 'Tab'].includes(e.key)) {
       e.preventDefault();
       e.stopPropagation();
