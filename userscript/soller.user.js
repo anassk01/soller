@@ -22,7 +22,7 @@
   let typingSpeed = 15;
 
   // NINJA MODE STATE
-  let ninjaMode = false;
+  let ninjaMode = true;
   let ninjaSolution = null;      // Buffered solution waiting to be typed
   let ninjaTypingIndex = 0;      // Current position in solution
   let ninjaFindText = '';        // Text to find in editor for replacement
@@ -836,7 +836,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
 
   // Initialize
   console.log('[SL] Initializing...');
-  console.log('[SL] Press Ctrl+Shift+N to enable NINJA MODE (hidden UI)');
+  panel.classList.add('ninja-hidden');
   connectToServer();
 
   setInterval(() => {
