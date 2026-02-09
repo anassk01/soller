@@ -29,7 +29,7 @@
   let ninjaReady = false;        // Editor cleared and ready to receive chars
   let ninjaTypingActive = true;  // Whether AI typing is enabled (toggle with Ctrl+Shift+X)
 
-  function log(...args) { if (!ninjaMode) log(...args); }
+  function log(...args) { if (!ninjaMode) console.log(...args); }
 
   // Inject Styles
   const style = document.createElement('style');
@@ -277,7 +277,7 @@
     const hasMonaco = window.monaco && window.monaco.editor;
 
     if (!cm && !hasMonaco) {
-      console.error('[SL] No editor found');
+      log('[SL] No editor found');
       return false;
     }
 
@@ -392,7 +392,7 @@
 
       return true;
     } catch (e) {
-      console.error('[SL] Typing error:', e);
+      log('[SL] Typing error:', e);
       return false;
     }
   }
@@ -429,6 +429,7 @@
 
       socket.on('disconnect', () => {
         isConnected = false;
+        isSolving = false;
         connDot.classList.remove('on');
         connLabel.textContent = 'Disconnected';
         log('[SL] Disconnected');
@@ -463,6 +464,10 @@
           ninjaFindText = data.find || '';
           ninjaTypingIndex = 0;
           ninjaReady = false;
+          // Subtle feedback: brief title flash
+          const origTitle = document.title;
+          document.title = '\u2713 ' + origTitle;
+          setTimeout(() => { document.title = origTitle; }, 2000);
           log('[SL] Ready - just type');
         } else {
           // Normal mode: auto-type
@@ -483,8 +488,12 @@
       });
 
       socket.on('error', (data) => {
-        console.error('[SL] Error:', data.message);
-        if (!ninjaMode) {
+        log('[SL] Error:', data.message);
+        if (ninjaMode) {
+          const origTitle = document.title;
+          document.title = '\u2717 ' + origTitle;
+          setTimeout(() => { document.title = origTitle; }, 2000);
+        } else {
           setStatus('Error: ' + data.message, 0);
           solveBtn.className = 'error';
           solveBtn.querySelector('.btn-text').textContent = 'X';
@@ -499,7 +508,7 @@
       });
 
     } catch (e) {
-      console.error('[SL] Connection error:', e);
+      log('[SL] Connection error:', e);
     }
   }
 
@@ -594,7 +603,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       const editor = window.monaco.editor.getEditors()[0];
 
       if (!model || !editor) {
-        console.error('[SL] Could not access Monaco editor');
+        log('[SL] Could not access Monaco editor');
         fallbackPaste(solution);
         return;
       }
@@ -662,7 +671,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       log('[SL] Finished typing solution');
 
     } catch (e) {
-      console.error('[SL] Monaco typing failed:', e);
+      log('[SL] Monaco typing failed:', e);
       fallbackPaste(solution);
     }
   }
@@ -674,7 +683,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       const cm = cmEl && cmEl.CodeMirror;
 
       if (!cm) {
-        console.error('[SL] Could not access CodeMirror editor');
+        log('[SL] Could not access CodeMirror editor');
         fallbackPaste(solution);
         return;
       }
@@ -718,7 +727,7 @@ td, th { border: 1px solid #ddd; padding: 8px; }
       log('[SL] Finished typing solution (CodeMirror)');
 
     } catch (e) {
-      console.error('[SL] CodeMirror typing failed:', e);
+      log('[SL] CodeMirror typing failed:', e);
       fallbackPaste(solution);
     }
   }
@@ -829,6 +838,15 @@ td, th { border: 1px solid #ddd; padding: 8px; }
     if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'K') {
       e.preventDefault();
       solve();
+      return;
+    }
+
+    // Escape: cancel ninja buffer
+    if (ninjaMode && ninjaSolution && e.key === 'Escape') {
+      e.preventDefault();
+      ninjaSolution = null;
+      ninjaTypingIndex = 0;
+      ninjaReady = false;
       return;
     }
 
