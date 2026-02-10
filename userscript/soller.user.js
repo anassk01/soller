@@ -27,7 +27,7 @@
   let ninjaTypingIndex = 0;      // Current position in solution
   let ninjaFindText = '';        // Text to find in editor for replacement
   let ninjaReady = false;        // Editor cleared and ready to receive chars
-  let ninjaTypingActive = true;  // Whether AI typing is enabled (toggle with Ctrl+Shift+X)
+  let ninjaTypingActive = true;  // Whether AI typing is enabled (toggle with Ctrl+Alt+Shift+X)
 
   function log(...args) { if (!ninjaMode) console.log(...args); }
 
@@ -819,23 +819,23 @@ td, th { border: 1px solid #ddd; padding: 8px; }
 
   // Keyboard Shortcuts
   document.addEventListener('keydown', (e) => {
-    // Ctrl+Shift+N: Toggle ninja mode
-    if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'N') {
+    // Ctrl+Alt+Shift+N: Toggle ninja mode
+    if (e.ctrlKey && e.altKey && e.shiftKey && e.key.toUpperCase() === 'N') {
       e.preventDefault();
       toggleNinjaMode();
       return;
     }
 
-    // Ctrl+Shift+X: Toggle AI typing on/off in ninja mode
-    if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'X') {
+    // Ctrl+Alt+Shift+X: Toggle AI typing on/off in ninja mode
+    if (e.ctrlKey && e.altKey && e.shiftKey && e.key.toUpperCase() === 'X') {
       e.preventDefault();
       ninjaTypingActive = !ninjaTypingActive;
       log(`[SL] AI typing ${ninjaTypingActive ? 'ON' : 'OFF'}`);
       return;
     }
 
-    // Ctrl+Shift+K: Solve/Scan
-    if (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'K') {
+    // Ctrl+Alt+Shift+S: Solve/Scan
+    if (e.ctrlKey && e.altKey && e.shiftKey && e.key.toUpperCase() === 'S') {
       e.preventDefault();
       solve();
       return;
